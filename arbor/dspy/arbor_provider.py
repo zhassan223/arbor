@@ -117,7 +117,27 @@ class ArborReinforceJob(ReinforceJob):
         max_context_length = self.train_kwargs.get("max_context_length")
         max_steps = self.train_kwargs.get("max_steps")
         lora_config = self.train_kwargs.get("lora_config")
-        # lora = self.train_kwargs.get("lora", self.DEFAULT_TRAIN_KWARGS["lora"])
+        generation_batch_size = self.train_kwargs.get("generation_batch_size")
+        steps_per_generation = self.train_kwargs.get("steps_per_generation")
+        top_p = self.train_kwargs.get("top_p")
+        top_k = self.train_kwargs.get("top_k")
+        min_p = self.train_kwargs.get("min_p")
+        repetition_penalty = self.train_kwargs.get("repetition_penalty")
+        presence_penalty = self.train_kwargs.get("presence_penalty")
+        frequency_penalty = self.train_kwargs.get("frequency_penalty")
+
+        # Normalize LoRA config to server schema (expects keys: r, lora_alpha, lora_dropout, target_modules)
+        if isinstance(lora_config, dict):
+            normalized_lora = dict(lora_config)
+            # Support both "lora_r" and "r"
+            if "r" not in normalized_lora and "lora_r" in normalized_lora:
+                normalized_lora["r"] = normalized_lora.pop("lora_r")
+            lora_config = normalized_lora
+
+        # Ensure report_to is a string or list acceptable by server/TrainingArguments
+        if isinstance(report_to, (list, tuple)) and len(report_to) == 1:
+            report_to = report_to[0]
+
         api_base = self.lm.kwargs["api_base"]
 
         finetune_model = ArborProvider._remove_provider_prefix(self.lm.model)
@@ -142,11 +162,18 @@ class ArborReinforceJob(ReinforceJob):
                 "report_to": report_to,
                 "log_completions": log_completions,
                 "logging_steps": logging_steps,
-                # "max_context_length": max_context_length,
-                # "max_seq_len": max_context_length,
                 "max_steps": max_steps,
+                # Optional generation controls
+                "generation_batch_size": generation_batch_size,
+                "steps_per_generation": steps_per_generation,
+                "top_p": top_p,
+                "top_k": top_k,
+                "min_p": min_p,
+                "repetition_penalty": repetition_penalty,
+                "presence_penalty": presence_penalty,
+                "frequency_penalty": frequency_penalty,
+                # LoRA
                 "lora_config": lora_config,
-                # "lora": lora,
             },
             "inference_config": {
                 "model": finetune_model,
@@ -160,6 +187,14 @@ class ArborReinforceJob(ReinforceJob):
                 },
             },
         }
+        # Drop None values to avoid overriding server defaults unintentionally
+        data["trainer_config"] = {
+            k: v for k, v in data["trainer_config"].items() if v is not None
+        }
+        data["inference_config"] = {
+            k: v for k, v in data["inference_config"].items() if v is not None
+        }
+
         url = urljoin(api_base, "fine_tuning/grpo/initialize")
         headers = {"Content-Type": "application/json"}
         response = requests.post(url=url, headers=headers, json=data)
