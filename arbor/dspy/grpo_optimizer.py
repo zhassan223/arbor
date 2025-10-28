@@ -31,6 +31,8 @@ from dspy.teleprompt.bootstrap_finetune import (
 )
 from dspy.teleprompt.bootstrap_trace import FailedPrediction, bootstrap_trace_data
 
+from arbor.server.services.scripts.arbor_grpo_config import ArborGRPOConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +42,7 @@ class ArborGRPO(FinetuneTeleprompter):
     def __init__(
         self,
         metric: Callable | None = None,
-        train_kwargs: dict[str, Any] | dict[LM, dict[str, Any]] | None = None,
+        train_kwargs: dict[str, Any] | dict[LM, dict[str, Any]] | ArborGRPOConfig | None = None,
         adapter: Adapter | dict[LM, Adapter] | None = None,
         exclude_demos: bool = False,
         num_threads: int = 6,
@@ -61,6 +63,8 @@ class ArborGRPO(FinetuneTeleprompter):
         | None = None,
         checkpoint: Literal["single-best", "improvements", "none"] = "single-best",
     ):
+        if isinstance(train_kwargs, ArborGRPOConfig):
+            train_kwargs = train_kwargs.to_dict()
         super().__init__(train_kwargs=train_kwargs)
         self.metric = metric
         self.adapter: dict[LM, Adapter] = self.convert_to_lm_dict(adapter)
