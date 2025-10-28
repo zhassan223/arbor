@@ -14,11 +14,11 @@ raw_dataset = load_dataset("Helsinki-NLP/opus_books", "en-fr")
 raw_data = [
     dspy.Example(english=ex["translation"]["en"], french=ex["translation"]["fr"]).with_inputs("english")
     for ex in raw_dataset["train"]
-][:2000]
+][:500]  # Reduced from 2000 to 500 total examples
 
 random.Random(43).shuffle(raw_data)
-trainset = raw_data[:1000]
-testset = raw_data[1000:1100]
+trainset = raw_data[:100]  # Reduced from 1000 to 100 training examples
+testset = raw_data[100:150]  # Reduced from 100 to 50 validation examples
 
 print(trainset[0])
 
@@ -37,7 +37,7 @@ student_lm = dspy.LM(
     temperature=1.0,
     api_base=arbor_server_info["base_url"],
     api_key="arbor",
-    max_tokens=2000,
+    max_tokens=256,  # Reduced from 2000 to 256 tokens for faster generation
 )
 
 student_unique_chars = unique_chars.deepcopy()
@@ -49,22 +49,22 @@ def _unique_letter_reward(input, pred, trace=None) -> float:
 
 
 train_kwargs = ArborGRPOConfig(
-    per_device_train_batch_size=8,
+    per_device_train_batch_size=16,  # Increased from 8 to 16
     temperature=1.0,
     beta=0.01,
     learning_rate=5e-5,
     gradient_checkpointing=True,
-    gradient_accumulation_steps=3,
+    gradient_accumulation_steps=2,  # Reduced from 3 to 2 (effective batch size: 16*2=32)
     bf16=True,
     lr_scheduler_type="constant_with_warmup",
-    warmup_steps=100,
+    warmup_steps=50,  # Reduced from 100 to 50
     # "max_prompt_length": None,
     # "max_completion_length": 1024,
     report_to="wandb",  # 'wandb'
     log_completions=False,
     max_context_length=None,
-    max_steps=1000,
-    logging_steps=1,
+    max_steps=500,  # Reduced from 1000 to 500
+    logging_steps=5,  # Reduced logging frequency from 1 to 5
     lora_config={
         "lora_alpha": 16,
         "lora_dropout": 0.05,
@@ -77,12 +77,12 @@ train_kwargs = ArborGRPOConfig(
 compiler = ArborGRPO(
     metric=_unique_letter_reward,
     num_dspy_examples_per_grpo_step=1,
-    num_rollouts_per_grpo_step=24,
+    num_rollouts_per_grpo_step=16,  # Reduced from 24 to 16 rollouts per step
     exclude_demos=True,
-    num_train_steps=20,
-    num_threads=1,
+    num_train_steps=15,  # Reduced from 20 to 15 steps
+    num_threads=4,  # Increased from 1 to 4 threads for parallel processing
     use_train_as_val=False,
-    num_steps_for_val=10,
+    num_steps_for_val=5,  # Reduced from 10 to 5 validation steps
     train_kwargs=train_kwargs,
     checkpoint="single-best",
 )
